@@ -8,6 +8,7 @@ import (
 	"image"
 	"log"
 	"os"
+	"reflect"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -18,7 +19,7 @@ import (
 type Format uint32
 
 const (
-	V4L2_PIX_FMT_UYVY Format = 0x55595659 // 'UYVY'
+	V4L2_PIX_FMT_UYVY Format = 0x59565955 // 'UYVY', little endian
 )
 
 var ssMap = map[Format]image.YCbCrSubsampleRatio{
@@ -110,15 +111,17 @@ func (dev *Device) Stream(ff FrameFormat) (chan image.Image, error) {
 
 func (dev *Device) setFormat(ff FrameFormat) error {
 	req := v4l2_pix_format{
-		Type:        uint32(_V4L2_BUF_TYPE_VIDEO_CAPTURE),
-		Width:       uint32(ff.Width),
-		Height:      uint32(ff.Height),
-		Pixelformat: uint32(ff.Format),
-	}
-	log.Printf("req %v", req)
-	log.Printf("ioctl %x %x", _VIDIOC_S_FMT, uintptr(unsafe.Pointer(&req)))
+		Type:         uint32(_V4L2_BUF_TYPE_VIDEO_CAPTURE),
+		Width:        uint32(ff.Width),
+		Height:       uint32(ff.Height),
+		Pixelformat:  uint32(ff.Format),
+		Bytesperline: uint32(0xa000),
+		Sizeimage:    uint32(ff.Width * ff.Height * 2),
+	}.asBytes()
+	log.Printf("fmt %x %#v", _VIDIOC_S_FMT, req)
 
-	return ioctl(dev.f.Fd(), _VIDIOC_S_FMT, uintptr(unsafe.Pointer(&req)))
+	sh := (*reflect.SliceHeader)(unsafe.Pointer(&req))
+	return ioctl(dev.f.Fd(), _VIDIOC_S_FMT, sh.Data)
 }
 
 func ioctl(fd uintptr, req uintptr, arg uintptr) error {

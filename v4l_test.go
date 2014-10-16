@@ -1,8 +1,20 @@
 package v4l
 
-import "testing"
+import (
+	"testing"
+)
 
-func TestDevice(t *testing.T) {
+func TestFormatReq(t *testing.T) {
+	req := v4l2_pix_format{
+		Type:        uint32(_V4L2_BUF_TYPE_VIDEO_CAPTURE),
+		Width:       uint32(1280),
+		Height:      uint32(720),
+		Pixelformat: uint32(V4L2_PIX_FMT_UYVY),
+	}.asBytes()
+	t.Logf("req: %#v", req)
+}
+
+func Disabled_TestDevice(t *testing.T) {
 	dev := "/dev/video0"
 	d, err := Open(dev)
 	if err != nil {

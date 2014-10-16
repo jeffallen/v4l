@@ -6,8 +6,11 @@ package v4l
 import (
 	"fmt"
 	"image"
+	"log"
 	"os"
 	"sync"
+	"syscall"
+	"unsafe"
 )
 
 // A Format is one of the pixel formats specified by V4L.
@@ -74,6 +77,11 @@ func (dev *Device) Stream(ff FrameFormat) (chan image.Image, error) {
 		return nil, fmt.Errorf("Device is not open.")
 	}
 
+	err := dev.setFormat(ff)
+	if err != nil {
+		return nil, err
+	}
+
 	ff.rect = image.Rect(0, 0, ff.Width, ff.Height)
 	subsample, ok := ssMap[ff.Format]
 	if !ok {
@@ -91,11 +99,33 @@ func (dev *Device) Stream(ff FrameFormat) (chan image.Image, error) {
 				break
 			}
 			dev.ch <- image.NewYCbCr(ff.rect, subsample)
+			break
 		}
-		// Shutdown
 		close(dev.ch)
 		dev.wg.Done()
 	}()
 
 	return dev.ch, nil
+}
+
+func (dev *Device) setFormat(ff FrameFormat) error {
+	req := v4l2_pix_format{
+		Type:        uint32(_V4L2_BUF_TYPE_VIDEO_CAPTURE),
+		Width:       uint32(ff.Width),
+		Height:      uint32(ff.Height),
+		Pixelformat: uint32(ff.Format),
+	}
+	log.Printf("req %v", req)
+	log.Printf("ioctl %x %x", _VIDIOC_S_FMT, uintptr(unsafe.Pointer(&req)))
+
+	return ioctl(dev.f.Fd(), _VIDIOC_S_FMT, uintptr(unsafe.Pointer(&req)))
+}
+
+func ioctl(fd uintptr, req uintptr, arg uintptr) error {
+	_, _, e := syscall.Syscall(
+		syscall.SYS_IOCTL, fd, req, arg)
+	if e != 0 {
+		return os.NewSyscallError("ioctl", e)
+	}
+	return nil
 }
